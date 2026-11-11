@@ -6,6 +6,7 @@ import tempfile
 import unittest
 
 from PIL import Image, ImageDraw
+from test_card_glyphs import table_with_cards
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,6 +35,21 @@ class CliTests(unittest.TestCase):
             result = run_cli("inspect", str(path))
         self.assertEqual(result.returncode, 0)
         self.assertEqual(json.loads(result.stdout)["state"], "unknown")
+        self.assertFalse(json.loads(result.stdout)["cards"]["complete"])
+
+    def test_inspect_reports_cards_and_street_in_json(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "flop.png"
+            table_with_cards(["Ts", "5c"], ["9c", "6h", "Ac"]).save(path)
+            result = run_cli("inspect", str(path))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        output = json.loads(result.stdout)
+        self.assertEqual(output["cards"]["hero"], ["Ts", "5c"])
+        self.assertEqual(output["cards"]["board"], ["9c", "6h", "Ac"])
+        self.assertEqual(output["cards"]["street"], "flop")
+        self.assertTrue(output["cards"]["complete"])
+        self.assertIn("state", output)
+        self.assertIn("confidence", output)
 
     def test_inspect_can_crop_a_table_inside_desktop_screenshot(self):
         desktop = Image.new("RGB", (1600, 900), (100, 100, 100))

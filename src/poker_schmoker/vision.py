@@ -66,7 +66,8 @@ def detect_action_panel(image: Image.Image) -> ActionPanelObservation:
     if image.width < 320 or image.height < 240:
         return ActionPanelObservation("unknown", 0, ("frame_too_small",))
     rgb = image.convert("RGB")
-    if not _patch_match(rgb, .5, .5, _is_felt):
+    felt_probes = ((.27, .5), (.73, .5), (.30, .6), (.65, .65))
+    if sum(_patch_match(rgb, x, y, _is_felt) for x, y in felt_probes) < 2:
         return ActionPanelObservation("unknown", .1, ("table_felt_not_confirmed",))
 
     cues = (

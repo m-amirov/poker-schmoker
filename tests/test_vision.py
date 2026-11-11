@@ -42,6 +42,11 @@ class VisionTests(unittest.TestCase):
         draw.rectangle((int(800 * .43), int(680 * .91), int(800 * .55), int(680 * .98)), fill=(45, 34, 40))
         self.assertEqual(detect_action_panel(image).state, "unknown")
 
+    def test_community_cards_can_cover_center_without_hiding_turn(self):
+        image = table_frame(800, 680)
+        ImageDraw.Draw(image).rectangle((315, 292, 485, 390), fill=(231, 231, 231))
+        self.assertEqual(detect_action_panel(image).state, "hero_turn")
+
 
 if __name__ == "__main__":
     unittest.main()

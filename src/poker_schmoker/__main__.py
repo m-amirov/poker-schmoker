@@ -9,7 +9,9 @@ import time
 
 from PIL import Image
 
+from .cards import CardObservation, observe_cards
 from .observer import TurnDebouncer
+from .streets import StreetTracker
 from .vision import detect_action_panel
 
 
@@ -23,11 +25,27 @@ def _bbox(value: str) -> tuple[int, int, int, int]:
     return values  # type: ignore[return-value]
 
 
-def _observation_json(observation) -> str:
-    return json.dumps(
-        {"state": observation.state, "confidence": observation.confidence, "evidence": list(observation.evidence)},
-        ensure_ascii=False,
-    )
+def _card_code(card) -> str | None:
+    return None if card is None else "23456789TJQKA"[card.rank - 2] + card.suit
+
+
+def _cards_json(observation: CardObservation) -> dict:
+    return {
+        "hero": [_card_code(card) for card in observation.hero_cards],
+        "board": [_card_code(card) for card in observation.board_cards],
+        "street": observation.street,
+        "complete": observation.complete,
+    }
+
+
+def _observation_json(observation, cards: CardObservation) -> str:
+    result = {
+        "state": observation.state,
+        "confidence": observation.confidence,
+        "evidence": list(observation.evidence),
+        "cards": _cards_json(cards),
+    }
+    return json.dumps(result, ensure_ascii=False)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -50,10 +68,11 @@ def main(argv: list[str] | None = None) -> int:
                         raise ValueError("bbox is outside screenshot bounds")
                     frame = frame.crop(args.bbox)
                 result = detect_action_panel(frame)
+                cards = observe_cards(frame)
         except (OSError, ValueError) as exc:
             print(f"Could not read screenshot: {exc}", file=sys.stderr)
             return 2
-        print(_observation_json(result))
+        print(_observation_json(result, cards))
         return 0
 
     if sys.platform != "win32":
@@ -66,17 +85,27 @@ def main(argv: list[str] | None = None) -> int:
     from PIL import ImageGrab
 
     debouncer = TurnDebouncer(required=2)
+    streets = StreetTracker()
     print("Watching the selected window bounds. Press Ctrl+C to stop.", file=sys.stderr)
     try:
         while True:
             frame = ImageGrab.grab(bbox=args.bbox)
             observed = detect_action_panel(frame)
+            cards = observe_cards(frame)
+            current_street = streets.push(cards)
+            if current_street is not None:
+                print(json.dumps({
+                    "event": "street_changed",
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "cards": _cards_json(cards),
+                }, ensure_ascii=False), flush=True)
             if debouncer.push(observed):
                 event = {
                     "event": "hero_turn_detected",
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "confidence": observed.confidence,
                     "evidence": list(observed.evidence),
+                    "cards": _cards_json(cards),
                 }
                 print(json.dumps(event, ensure_ascii=False), flush=True)
             time.sleep(args.interval)
